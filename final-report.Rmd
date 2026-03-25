@@ -18,6 +18,7 @@ library(tidyverse)
 
 ```{r}
 d = read.csv("data/fueltypesall.csv")
+d = na.omit(d)
 glimpse(d)
 ```
 
