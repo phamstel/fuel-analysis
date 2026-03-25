@@ -16,9 +16,24 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
 
+# 1. Introduction
+## Background of the Data
+
+## Research Question
+
+# 2. The Data
 ```{r}
 d = read.csv("data/fueltypesall.csv")
 d = na.omit(d)
 glimpse(d)
 ```
+## Description of Variables and Data
+
+## Visualizations
+
+## Data Cleansing
+
+# 3. 
+
+
 
