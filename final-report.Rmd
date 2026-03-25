@@ -11,3 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # This is a not a title
 # STAA57 IS GREAT
+
+```{r eval = FALSE}
+library(tidyverse)
+```
+
+```{r}
+d = read.csv("data/fueltypesall.csv")
+glimpse(d)
+```
+
