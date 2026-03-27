@@ -1,6 +1,6 @@
 ---
-title: "final-report"
-author: "Stella Pham 1011437688"
+title: "Ontario Fuel Price Trends: 1990 to 2026"
+author: "Michael Zhou, Nigel Li, Stella Pham"
 date: "2026-03-20"
 output: html_document
 ---
@@ -9,31 +9,290 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# This is a not a title
-# STAA57 IS GREAT
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(knitr)
+library(ggplot2)
+```
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+raw_data = read.csv("data/fueltypesall.csv")
+```
+
+## Section 1: Introduction
+### Background of the Data
+This data set contains weekly retail prices for six fuel types: Regular Unleaded 
+Gasoline, Mid‑Grade Gasoline, Premium Gasoline, Diesel, Auto Propane, and 
+Compressed Natural Gas across 10 markets in Ontario. Prices are expressed in 
+Canadian cents per litre, with compressed natural gas measured in cents per 
+gasoline-equivalent litre. The data set spans from January 3, 1990 to March 16, 
+2026 and is updated weekly with the latest retail fuel price data published by 
+the Government of Ontario.
+
+### Research Question
+How does the price differ between cities in Ontario?
+
+## Section 2: Data Description
+The data set contains 11,252 weeks of data from 1990 to March 16, 2026, covering 
+six fuel types. Each row represents a weekly average of fuel prices, so daily 
+fluctuations are not captured. It also includes three regional average columns 
+(Ontario, Northern Ontario, Southern Ontario), which do not correspond to the 
+simple average of the included cities, indicating they were sourced externally.
+
+## Section 3: Data Preparation/Cleaning
+Prior to analysis, it is important to highlight certain features of the raw 
+data set that affect how it should be handled:
+
+### 1. Bilingual Structure of the Data Set
+The data set contains both French and English labels, sometimes separated by 
+slashes or presented in different columns. To maintain consistency, 
+variables are standardized into a single language format before analysis.
+
+We first rename the columns we keep.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+d = raw_data %>%
+  rename(
+    Toronto_West = Toronto.West.Ouest,
+    Toronto_East = Toronto.East.Est,
+    St_Catharines = St..Catharine.s,
+    Sault_Saint_Marie = Sault.Saint.Marie,
+    Thunder_Bay = Thunder.Bay,
+    North_Bay = North.Bay,
+    Parry_Sound = Parry.Sound,
+    Ontario_Average = Ontario.Average.Moyenne.provinciale,
+    Southern_Ontario_Average = Southern.Average.Moyenne.du.sud.de.l.Ontario,
+    Northern_Ontario_Average = Northern.Average.Moyenne.du.nord.de.l.Ontario,
+    Fuel_Type = Fuel.Type
+  )
+```
+
+```{r eval = TRUE, echo = FALSE, message = TRUE}
+old_cols = names(raw_data)
+new_cols = names(d)
+
+names_comparison = data.frame(
+  Before = old_cols,
+  After = new_cols,
+  stringsAsFactors = FALSE 
+)
+
+library(knitr)
+kable(names_comparison, caption = "Old Column Names vs. New Column Names")
+```
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+d = d %>% 
+  select(!Type.de.carburant)
+```
+
+We also remove the column "Type.de.carburant" was removed because it was the 
+same as the information in the Fuel_Type column. More specifically, it contained 
+the fuel type names in French.
+
+### 2. Handling of Zero Values
+Values recorded as 0 in the city-level columns are interpreted as missing data, 
+since these 0s do not represent actual prices. To prevent these zeros from 
+affecting computations, all 0 values are converted to NA prior to analysis.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+d = d %>%
+  mutate(across(where(is.numeric), ~ na_if(., 0)))
+```
+
+### 3. Conversion of the Date Column
+The Week column, originally recorded as a character string, was converted to a 
+Date type to ensure proper chronological ordering and accurate calculations. 
+This allows for correct filtering, aggregation, and plotting over time, and 
+ensures that weekly comparisons between cities are reliable.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+d = d %>%
+  mutate(Date = as.Date(Date))
+```
+
+### 4. Categorization of the Data Set
+As mentioned above, the data set includes six fuel types. To enable clearer 
+and more accurate comparisons between cities, the data will be analyzed 
+separately for each fuel type.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+regular_gas_data = d %>%
+  filter(Fuel_Type == "Regular Unleaded Gasoline") %>%
+  select(!Fuel_Type)
+
+diesel_data = d %>%
+  filter(Fuel_Type == "Diesel") %>%
+  select(!Fuel_Type)
+
+natural_gas_data = d %>%
+  filter(Fuel_Type == "Compressed Natural Gas") %>%
+  select(!Fuel_Type)
+
+mid_gas_data = d %>%
+  filter(Fuel_Type == "Mid-Grade Gasoline") %>%
+  select(!Fuel_Type) 
+
+premium_gas_data = d %>%
+  filter(Fuel_Type == "Premium Gasoline") %>%
+  select(!Fuel_Type)
+
+auto_propane_data = d %>%
+  filter(Fuel_Type == "Auto Propane") %>%
+  select(!Fuel_Type) 
+```
+
+## Section 4: Exploratory Data Analysis
+### Visualizations
+
+We want
+
+```{r eval = TRUE, echo = FALSE, warning = FALSE}
+d %>% 
+  ggplot(aes(x = Date, y = Ontario_Average, color = Fuel_Type)) + 
+  geom_line() +
+  labs(
+    title = "Weekly Fuel Prices in Ontario by Fuel Type",
+    x = "Week",
+    y = "Average Fuel Price (cents/litre)",
+    color = "Fuel Type")
+```
+
+## Section 5: Statistical Inference
+### Confidence Interval
+
+### Hypothesis Testing
+
+## Section 6: Bootstrapping
+
+## Section 7: Regression Analysis
+
+## Section 8: Model Validation
+
+## Section 9: Conclusion
+
+\pagebreak
+
+## Section 10: Appendix
+
+### Section 1: Introduction
+
+### Section 2: Data Description
+
+### Section 3: Data Preparation/Cleaning
 
 ```{r eval = FALSE}
+# Import needed libraries
 library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(knitr)
+library(ggplot2)
 ```
 
-# 1. Introduction
-## Background of the Data
-
-## Research Question
-
-# 2. The Data
-```{r}
-d = read.csv("data/fueltypesall.csv")
-d = na.omit(d)
-glimpse(d)
+```{r eval = FALSE}
+# Get the data
+raw_data = read.csv("data/fueltypesall.csv")
 ```
-## Description of Variables and Data
 
-## Visualizations
+```{r eval = FALSE}
+# Rename the columns to full English
+d = raw_data %>%
+  rename(
+    Toronto_West = Toronto.West.Ouest,
+    Toronto_East = Toronto.East.Est,
+    St_Catharines = St..Catharine.s,
+    Sault_Saint_Marie = Sault.Saint.Marie,
+    Thunder_Bay = Thunder.Bay,
+    North_Bay = North.Bay,
+    Parry_Sound = Parry.Sound,
+    Ontario_Average = Ontario.Average.Moyenne.provinciale,
+    Southern_Ontario_Average = Southern.Average.Moyenne.du.sud.de.l.Ontario,
+    Northern_Ontario_Average = Northern.Average.Moyenne.du.nord.de.l.Ontario,
+    Fuel_Type = Fuel.Type
+  )
+```
 
-## Data Cleansing
+```{r eval = FALSE}
+# Show the column name changes in a comparison table
+old_cols = names(raw_data)
+new_cols = names(d)
 
-# 3. 
+names_comparison = data.frame(
+  Before = old_cols,
+  After = new_cols,
+  stringsAsFactors = FALSE 
+)
+kable(names_comparison, caption = "Old Column Names vs. New Column Names")
+```
+
+```{r eval = FALSE}
+# Drop the column Type.de.carburant
+d = d %>% 
+  select(!Type.de.carburant)
+```
+
+```{r eval = FALSE}
+# Convert 0 values to NA
+d = d %>%
+  mutate(across(where(is.numeric), ~ na_if(., 0)))
+```
+
+```{r eval = FALSE}
+# Change the Date column type from char to date
+d = d %>%
+  mutate(Date = as.Date(Date))
+```
+
+```{r eval = FALSE}
+# Separate the data set into the six fuel categories and drop the Fuel_Type column for each new data set
+regular_gas_data = d %>%
+  filter(Fuel_Type == "Regular Unleaded Gasoline") %>%
+  select(!Fuel_Type)
+
+diesel_data = d %>%
+  filter(Fuel_Type == "Diesel") %>%
+  select(!Fuel_Type)
+
+natural_gas_data = d %>%
+  filter(Fuel_Type == "Compressed Natural Gas") %>%
+  select(!Fuel_Type)
+
+mid_gas_data = d %>%
+  filter(Fuel_Type == "Mid-Grade Gasoline") %>%
+  select(!Fuel_Type) 
+
+premium_gas_data = d %>%
+  filter(Fuel_Type == "Premium Gasoline") %>%
+  select(!Fuel_Type)
+
+auto_propane_data = d %>%
+  filter(Fuel_Type == "Auto Propane") %>%
+  select(!Fuel_Type) 
+```
+
+### Section 4: Exploratory Data Analysis
+```{r eval = FALSE}
+d %>% 
+  ggplot(aes(x = Date, y = Ontario_Average, color = Fuel_Type)) + 
+  geom_line() +
+  labs(
+    title = "Weekly Fuel Prices in Ontario by Fuel Type",
+    x = "Week",
+    y = "Average Fuel Price (cents/litre)",
+    color = "Fuel Type")
+
+```
 
 
+### Section 5: Statistical Inference
 
+### Section 6: Bootstrapping
+
+### Section 7: Regression Analysis
+
+### Section 8: Model Validation
+
+### Section 9: Conclusion
