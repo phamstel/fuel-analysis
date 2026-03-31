@@ -161,11 +161,299 @@ d %>%
 ```
 
 ## Section 5: Statistical Inference
-### Confidence Interval
+To answer our research question on how prices differ across cities, we will 
+compare the Northern Ontario Average price to the Southern Ontario Average 
+price. To ensure our analysis provides a comprehensive view of the 
+transportation sector, we will focus our statistical inference on four distinct 
+fuel categories: Regular Unleaded Gasoline (representing the majority of 
+consumer vehicles), Diesel (representing commercial transit), as well as Auto 
+Propane (representing alternative fuels). 
+Additionally, we have restricted our analysis to recent data (2021–2026) to 
+ensure our findings reflect the current economic landscape and provide the most 
+relevant insights. Because prices are recorded on the exact same weeks, we will 
+analyze the paired differences (Northern Average - Southern Average).
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+# REGULAR GASOLINE
+regional_compare_gas = regular_gas_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
 
-### Hypothesis Testing
+t_test_gas = t.test(regional_compare_gas$Northern_Ontario_Average, 
+                    regional_compare_gas$Southern_Ontario_Average,
+                    paired = TRUE)
+mean_diff_gas = t_test_gas$estimate
+ci_lower_gas = t_test_gas$conf.int[1]
+ci_upper_gas = t_test_gas$conf.int[2]
+p_val_gas = t_test_gas$p.value
+
+# DIESEL
+regional_compare_diesel = diesel_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_diesel = t.test(regional_compare_diesel$Northern_Ontario_Average,
+                       regional_compare_diesel$Southern_Ontario_Average,
+                       paired = TRUE)
+mean_diff_diesel = t_test_diesel$estimate
+ci_lower_diesel = t_test_diesel$conf.int[1]
+ci_upper_diesel = t_test_diesel$conf.int[2]
+p_val_diesel = t_test_diesel$p.value
+
+# AUTO PROPANE
+regional_compare_propane = auto_propane_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_propane = t.test(regional_compare_propane$Northern_Ontario_Average,
+                        regional_compare_propane$Southern_Ontario_Average,
+                        paired = TRUE)
+mean_diff_propane = t_test_propane$estimate
+ci_lower_propane = t_test_propane$conf.int[1]
+ci_upper_propane = t_test_propane$conf.int[2]
+p_val_propane = t_test_propane$p.value
+```
+### 5.1 Confidence Interval
+We estimate difference in gas prices (Northern Average - Southern Average) 
+across the available weeks between 2021-2026 for Regular Unleaded Gasoline,
+Diesel, .  
+```{r eval = TRUE, echo = FALSE, message = T}
+# Create a dataframe to store the results
+summary_table = data.frame(
+  "Fuel Type" = c(
+    "Regular Unleaded Gasoline", 
+    "Diesel", 
+    "Auto Propane"
+  ),
+  "Mean Difference (cents/litre)" = c(
+    round(mean_diff_gas, 2), 
+    round(mean_diff_diesel, 2),
+    round(mean_diff_propane, 2)
+  ),
+  "95% Confidence Interval" = c(
+    paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),
+    paste0("(", round(ci_lower_diesel, 2), ", ", round(ci_upper_diesel, 2),
+           ")"),
+    paste0("(", round(ci_lower_propane, 2), ", ", round(ci_upper_propane, 2),
+           ")")
+  ),
+  check.names = FALSE # This prevents R from putting periods in the column names
+)
+
+# Use kable to print a perfectly formatted table
+kable(summary_table, 
+      caption = "Average Price Differences: Northern vs. Southern Ontario",
+      align = c("c", "c", "c"))
+```
+  
+**Interpretation**:  
+Based on data from the last five years, we are 95% confident that the true 
+average difference in fuel prices between Northern and Southern Ontario falls 
+within the following intervals (in cents per litre):
+
+* **Regular Gas:** `r round(ci_lower_gas, 2)` to `r round(ci_upper_gas, 2)`
+* **Diesel:** `r round(ci_lower_diesel, 2)` to `r round(ci_upper_diesel, 2)`
+* **Auto Propane:** `r round(ci_lower_propane, 2)` to 
+`r round(ci_upper_propane,2)`
+
+### 5.2 Hypothesis Testing
+To rigorously answer our research question regarding regional price differences,
+we conducted a paired two-sample t-test for each of our three fuel types. We set
+our significance level at $\alpha = 0.05$.
+
+**Hypotheses:**
+Let $\mu_d$ represent the true mean difference in weekly fuel prices between 
+Northern and Southern Ontario ($\mu_{North} - \mu_{South}$).  
+
+* **Null Hypothesis ($H_0$):** $\mu_d = 0$. There is no true mean difference in 
+fuel prices between Northern and Southern Ontario. (Any observed difference is 
+due to random market fluctuations).
+* **Alternative Hypothesis ($H_1$):** $\mu_d \neq 0$. There is a true, 
+statistically significant mean difference in fuel prices between Northern and 
+Southern Ontario.
+
+**Results:**
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+# Create a dataframe for the Hypothesis Testing results
+ht_table = data.frame(
+  "Fuel Type" = c(
+    "Regular Unleaded Gasoline", 
+    "Diesel", 
+    "Auto Propane"
+  ),
+  "p-value" = c(
+    format.pval(p_val_gas, digits = 3, eps = 0.001),
+    format.pval(p_val_diesel, digits = 3, eps = 0.001),
+    format.pval(p_val_propane, digits = 3, eps = 0.001)
+  ),
+  check.names = FALSE
+)
+
+# Print the table using kable
+kable(ht_table, 
+      caption = "Paired T-Test Results: Regional Price Differences",
+      align = c("l", "c", "c"))
+```
+
+**Conclusion:**   
+As shown in the table above, the calculated p-values for all four fuel 
+types—Regular Unleaded Gasoline, Diesel, Auto Propane, and Compressed Natural 
+Gas—are strictly less than our significance level of 0.05. Because of this, 
+**the price differences for every fuel category are statistically significant,** 
+and **we confidently reject the null hypothesis ($H_0$) in all cases.**
 
 ## Section 6: Bootstrapping
+While the paired t-tests in Section 5 provided strong evidence of a regional 
+price divide, parametric tests rely on the assumption that the sample means are 
+normally distributed. Real-world commodities like fuel are subject to sudden 
+supply shocks and extreme price volatility, which can introduce outlines into 
+the data. 
+
+To ensure our findings are robust and not skewed by these potential outliers, we
+utilize a non-parametric approach: **Bootstrapping**. By resampling our modern 
+(2021-2026) paired regional price differences 1,000 times with replacement, we 
+can generate an empirical distribution of the mean difference without relying on
+assumptions of normality.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+set.seed(57)  # Set a seed for exact reproducibility
+B = 1000      # Number of bootstrap iterations
+
+# Create a custom function using the tidyverse method taught in class
+get_boot_ci = function(df) {
+  
+  # Define the single bootstrap step as taught in lecture
+  boot_function = function() {
+    # Resample the dataframe 
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    
+    # Calculate the mean difference
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    
+    # Extract the value
+    return(boot_mean[1,1])
+  }
+  
+  # Replicate the process B times
+  boot_means = replicate(B, boot_function())
+  
+  # Extract the 2.5% and 97.5% percentiles for the 95% CI
+  ci = quantile(boot_means, probs = c(0.025, 0.975))
+  return(c(lower = ci[1], upper = ci[2]))
+}
+
+# Apply the function to all three fuel types using the dataframes we made in 
+# Section 5
+boot_gas = get_boot_ci(regional_compare_gas)
+boot_diesel = get_boot_ci(regional_compare_diesel)
+boot_propane = get_boot_ci(regional_compare_propane)
+```
+
+### 6.1 Bootstrap Confidence Intervals vs. Calssical Intervals
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+boot_table = data.frame(
+  "Fuel Type" = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"),
+  "Classical 95% CI (T-Test)" = c(
+    paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),
+    paste0("(", round(ci_lower_diesel, 2), ", ", 
+           round(ci_upper_diesel, 2), ")"),
+    paste0("(", round(ci_lower_propane, 2), ", ", 
+           round(ci_upper_propane, 2), ")")
+  ),
+  "Bootstrap 95% CI" = c(
+    paste0("(", round(boot_gas["lower.2.5%"], 2), ", ",
+           round(boot_gas["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_diesel["lower.2.5%"], 2), ", ",
+           round(boot_diesel["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_propane["lower.2.5%"], 2), ", ",
+           round(boot_propane["upper.97.5%"], 2), ")")
+  ),
+  check.names = FALSE
+)
+
+kable(boot_table, caption = 
+        "Comparison of Classical and Bootstrapped 95% Confidence Intervals",
+      align = c("l", "c", "c"))
+```
+
+### 6.2 Visualization of Bootstarpped Means
+To better conceptualize this process, we can visualize the 1,000 resampled mean 
+differences for Regular Unleaded Gasoline. The red dashed lines represent the 
+boundaries of our 95% Bootstrap Confidence Interval.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.align='center', fig.width=6, fig.height=3.5}
+# 1. Create a function to extract the 1000 raw means for plotting
+get_boot_means = function(df) {
+  boot_func = function() {
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    return(boot_mean[1,1])
+  }
+  return(replicate(B, boot_func()))
+}
+
+# 2. Generate the 1,000 means for the three fuel types
+boot_means_gas = get_boot_means(regional_compare_gas)
+boot_means_diesel = get_boot_means(regional_compare_diesel)
+boot_means_propane = get_boot_means(regional_compare_propane)
+
+# 3. Combine everything into one large dataframe AND set specific order (Levels)
+plot_data = data.frame(
+  Fuel_Type = factor(
+    rep(c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"), each = B),
+    levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane") 
+    # This forces the left-to-right order
+  ),
+  Means = c(boot_means_gas, boot_means_diesel, boot_means_propane)
+)
+
+# 4. Create a dataframe for the Confidence Intervals with the same ordered 
+#factor
+ci_data = data.frame(
+  Fuel_Type = factor(
+    c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"),
+    levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane")
+  ),
+  Lower = c(boot_gas[1], boot_diesel[1], boot_propane[1]),
+  Upper = c(boot_gas[2], boot_diesel[2], boot_propane[2])
+)
+
+# 5. Plot using facet_wrap, adding colors and forcing 3 columns (left-to-right)
+ggplot(plot_data, aes(x = Means, fill = Fuel_Type)) +
+  geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.8,
+                 show.legend = FALSE) +
+  geom_vline(data = ci_data, aes(xintercept = Lower), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  geom_vline(data = ci_data, aes(xintercept = Upper), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  scale_fill_manual(values = c(
+    "Regular Unleaded Gasoline" = "lightblue", 
+    "Diesel" = "orange", 
+    "Auto Propane" = "lightgreen"
+  )) +
+  facet_wrap(~ Fuel_Type, scales = "free_x", ncol = 3) + 
+  labs(
+    title = "Bootstrap Distributions of Mean Regional Differences",
+    subtitle = "Northern Avg - Southern Avg (1,000 Resamples)",
+    x = "Mean Difference (cents/litre)", 
+    y = "Frequency"
+  ) +
+  theme_minimal(base_size = 14, base_family = "serif") +
+  theme(strip.text = element_text(face = "bold", size = 10))
+```
+
+### 6.3 Interpretation
+As demonstrated in the comparison table, our non-parametric Bootstrap confidence
+intervals are nearly identical to the classical parametric intervals calculated 
+in Section 5. Furthermore, the visualized distributions of the resampled means 
+for all three fuel types exhibit clear, bell-shaped curves that sit entirely 
+above zero.
 
 ## Section 7: Regression Analysis
 
@@ -247,7 +535,8 @@ d = d %>%
 ```
 
 ```{r eval = FALSE}
-# Separate the data set into the six fuel categories and drop the Fuel_Type column for each new data set
+# Separate the data set into the six fuel categories and drop the Fuel_Type 
+# column for each new data set
 regular_gas_data = d %>%
   filter(Fuel_Type == "Regular Unleaded Gasoline") %>%
   select(!Fuel_Type)
@@ -286,10 +575,238 @@ d %>%
 
 ```
 
-
 ### Section 5: Statistical Inference
+```{r eval = F, echo = T, message = FALSE}
+### Filters the dataset for recent years (2021+) and runs paired t-tests to 
+### calculate the average regional price difference, confidence intervals, and 
+### statistical significance for gasoline, diesel, and auto propane.
+
+# REGULAR GASOLINE
+regional_compare_gas = regular_gas_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_gas = t.test(regional_compare_gas$Northern_Ontario_Average, 
+                    regional_compare_gas$Southern_Ontario_Average,
+                    paired = TRUE)
+mean_diff_gas = t_test_gas$estimate
+ci_lower_gas = t_test_gas$conf.int[1]
+ci_upper_gas = t_test_gas$conf.int[2]
+p_val_gas = t_test_gas$p.value
+
+# DIESEL
+regional_compare_diesel = diesel_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_diesel = t.test(regional_compare_diesel$Northern_Ontario_Average,
+                       regional_compare_diesel$Southern_Ontario_Average,
+                       paired = TRUE)
+mean_diff_diesel = t_test_diesel$estimate
+ci_lower_diesel = t_test_diesel$conf.int[1]
+ci_upper_diesel = t_test_diesel$conf.int[2]
+p_val_diesel = t_test_diesel$p.value
+
+# AUTO PROPANE
+regional_compare_propane = auto_propane_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_propane = t.test(regional_compare_propane$Northern_Ontario_Average,
+                        regional_compare_propane$Southern_Ontario_Average,
+                        paired = TRUE)
+mean_diff_propane = t_test_propane$estimate
+ci_lower_propane = t_test_propane$conf.int[1]
+ci_upper_propane = t_test_propane$conf.int[2]
+p_val_propane = t_test_propane$p.value
+```
+
+```{r eval = F, echo = T, message = F}
+### Compiles the calculated mean differences and 95% confidence intervals into a
+### dataframe and generates a cleanly formatted summary table using the kable 
+## function.
+
+# Create a dataframe to store the results
+summary_table = data.frame(
+  "Fuel Type" = c(
+    "Regular Unleaded Gasoline", 
+    "Diesel", 
+    "Auto Propane"
+  ),
+  "Mean Difference (cents/litre)" = c(
+    round(mean_diff_gas, 2), 
+    round(mean_diff_diesel, 2),
+    round(mean_diff_propane, 2)
+  ),
+  "95% Confidence Interval" = c(
+    paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),
+    paste0("(", round(ci_lower_diesel, 2), ", ", round(ci_upper_diesel, 2),
+           ")"),
+    paste0("(", round(ci_lower_propane, 2), ", ", round(ci_upper_propane, 2),
+           ")")
+  ),
+  check.names = FALSE # This prevents R from putting periods in the column names
+)
+
+# Use kable to print a perfectly formatted table
+kable(summary_table, 
+      caption = "Average Price Differences: Northern vs. Southern Ontario",
+      align = c("c", "c", "c"))
+```
+
+```{r eval = F, echo = T, message = FALSE}
+### Compiles the p-values from the paired t-tests into a summary table to 
+### evaluate the statistical significance of regional price differences across 
+### the three fuel types.
+
+# Dataframe for the Hypothesis Testing results
+ht_table = data.frame(
+  "Fuel Type" = c(
+    "Regular Unleaded Gasoline", 
+    "Diesel", 
+    "Auto Propane"
+  ),
+  "p-value" = c(
+    format.pval(p_val_gas, digits = 3, eps = 0.001),
+    format.pval(p_val_diesel, digits = 3, eps = 0.001),
+    format.pval(p_val_propane, digits = 3, eps = 0.001)
+  ),
+  check.names = FALSE
+)
+
+# Table
+kable(ht_table, 
+      caption = "Paired T-Test Results: Regional Price Differences",
+      align = c("l", "c", "c"))
+```
 
 ### Section 6: Bootstrapping
+```{r eval = F, echo = T, message = FALSE, warning = FALSE}
+### Mimics the concept of repeated sampling by using the bootstrap method to 
+### generate distributions and 95% confidence intervals for regional 
+### price differences across the three fuel types.
+
+set.seed(57)
+B = 1000      # Number of bootstrap iterations
+
+get_boot_ci = function(df) {
+  
+  boot_function = function() {
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    return(boot_mean[1,1])
+  }
+  
+  # Replicate the process B times
+  boot_means = replicate(B, boot_function())
+  
+  # 2.5% and 97.5% percentiles for the 95% CI
+  ci = quantile(boot_means, probs = c(0.025, 0.975))
+  return(c(lower = ci[1], upper = ci[2]))
+}
+
+# Apply the function to all three fuel types using the dataframes we made in 
+# Section 5
+boot_gas = get_boot_ci(regional_compare_gas)
+boot_diesel = get_boot_ci(regional_compare_diesel)
+boot_propane = get_boot_ci(regional_compare_propane)
+```
+
+```{r eval = F, echo = T, message = FALSE, warning = FALSE}
+### Compiles the 95% confidence intervals from both the classical t-tests and 
+### the bootstrap resampling into a comparative dataframe to demonstrate the 
+### stability of the regional price difference estimates across all three fuel 
+### types.
+
+boot_table = data.frame(
+  "Fuel Type" = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"),
+  "Classical 95% CI (T-Test)" = c(
+    paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),
+    paste0("(", round(ci_lower_diesel, 2), ", ", 
+           round(ci_upper_diesel, 2), ")"),
+    paste0("(", round(ci_lower_propane, 2), ", ", 
+           round(ci_upper_propane, 2), ")")
+  ),
+  "Bootstrap 95% CI" = c(
+    paste0("(", round(boot_gas["lower.2.5%"], 2), ", ",
+           round(boot_gas["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_diesel["lower.2.5%"], 2), ", ",
+           round(boot_diesel["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_propane["lower.2.5%"], 2), ", ",
+           round(boot_propane["upper.97.5%"], 2), ")")
+  ),
+  check.names = FALSE
+)
+
+kable(boot_table, caption = 
+        "Comparison of Classical and Bootstrapped 95% Confidence Intervals",
+      align = c("l", "c", "c"))
+```
+
+```{r eval = F, echo = T, message = FALSE, warning = FALSE, fig.align='center', fig.width=6, fig.height=3.5}
+#Creates a function to extract the 1000 raw means for plotting
+get_boot_means = function(df) {
+  boot_func = function() {
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    return(boot_mean[1,1])
+  }
+  return(replicate(B, boot_func()))
+}
+
+# Generates the 1,000 means for the three fuel types
+boot_means_gas = get_boot_means(regional_compare_gas)
+boot_means_diesel = get_boot_means(regional_compare_diesel)
+boot_means_propane = get_boot_means(regional_compare_propane)
+
+#Combines everything into one large dataframe AND set specific order (Levels)
+plot_data = data.frame(
+  Fuel_Type = factor(
+    rep(c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"), each = B),
+    levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane") 
+  ),
+  Means = c(boot_means_gas, boot_means_diesel, boot_means_propane)
+)
+
+#Creates a dataframe for the Confidence Intervals with the same ordered factor
+ci_data = data.frame(
+  Fuel_Type = factor(
+    c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"),
+    levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane")
+  ),
+  Lower = c(boot_gas[1], boot_diesel[1], boot_propane[1]),
+  Upper = c(boot_gas[2], boot_diesel[2], boot_propane[2])
+)
+
+#Plot using facet_wrap, adding colors and forcing 3 columns (left-to-right)
+ggplot(plot_data, aes(x = Means, fill = Fuel_Type)) +
+  geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.8,
+                 show.legend = FALSE) +
+  geom_vline(data = ci_data, aes(xintercept = Lower), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  geom_vline(data = ci_data, aes(xintercept = Upper), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  scale_fill_manual(values = c(
+    "Regular Unleaded Gasoline" = "steelblue", 
+    "Diesel" = "darkorange", 
+    "Auto Propane" = "forestgreen"
+  )) +
+  facet_wrap(~ Fuel_Type, scales = "free_x", ncol = 3) + 
+  labs(
+    title = "Bootstrap Distributions of Mean Regional Differences",
+    subtitle = "Northern Avg - Southern Avg (1,000 Resamples)",
+    x = "Mean Difference (cents/litre)", 
+    y = "Frequency"
+  ) +
+  theme_minimal(base_size = 14, base_family = "serif") +
+  theme(strip.text = element_text(face = "bold", size = 10))
+```
 
 ### Section 7: Regression Analysis
 
