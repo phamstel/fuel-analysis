@@ -1,7 +1,7 @@
 ---
-title: "Ontario Fuel Price Trends: 1990 to 2026"
+title: "Ops let's write title later"
 author: "Michael Zhou, Nigel Li, Stella Pham"
-date: "2026-03-20"
+date: "`r Sys.Date()`"
 output: html_document
 ---
 
@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r eval = TRUE, echo = FALSE, message = FALSE}
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
 library(tidyverse)
 library(dplyr)
 library(lubridate)
@@ -88,7 +88,7 @@ d = d %>%
   select(!Type.de.carburant)
 ```
 
-We also remove the column "Type.de.carburant" was removed because it was the 
+We also remove the column "Type.de.carburant" because it was the 
 same as the information in the Fuel_Type column. More specifically, it contained 
 the fuel type names in French.
 
@@ -141,7 +141,8 @@ premium_gas_data = d %>%
 
 auto_propane_data = d %>%
   filter(Fuel_Type == "Auto Propane") %>%
-  select(!Fuel_Type) 
+  select(!Fuel_Type)
+
 ```
 
 ## Section 4: Exploratory Data Analysis
@@ -456,14 +457,196 @@ for all three fuel types exhibit clear, bell-shaped curves that sit entirely
 above zero.
 
 ## Section 7: Regression Analysis
+In order to better understand the fuel price difference between the cities, we fit a regression model with time and city as predictors. From the weekly fuel price plot in Section 4, we can clearly see the correlation between time and fuel price is non-linear. Thus, we fit a polynomial regression model.  
 
-## Section 8: Model Validation
+```{r echo = FALSE}
+# # Visualization on polynomial fitting
+# plot_data = regular_gas_data %>%
+#   filter(Date >= as.Date("2021-01-01")) %>%
+#   mutate(Time_Index = as.numeric(Date - min(Date))) %>%
+#   drop_na(Ontario_Average)
+# 
+# ggplot(plot_data, aes(x = Time_Index, y = Ontario_Average)) + 
+#   geom_point() + 
+#   geom_smooth(method = "lm", formula = y ~ poly(x, 1), 
+#               aes(color = "Deg 1"), se = FALSE, linewidth = 1) + 
+#   geom_smooth(method = "lm", formula = y ~ poly(x, 2), 
+#               aes(color = "Deg 2"), se = FALSE, linewidth = 1) + 
+#   geom_smooth(method = "lm", formula = y ~ poly(x, 3), 
+#               aes(color = "Deg 3"), se = FALSE, linewidth = 1) +
+#   geom_smooth(method = "lm", formula = y ~ poly(x, 5), 
+#               aes(color = "Deg 5"), se = FALSE, linewidth = 1) +
+#   labs(
+#     title = "Testing Polynomial Fits on Fuel Prices",
+#     x = "Week",
+#     y = "Ontario Average Fuel Price (cents/litre)",
+#     color = "Model Fit"
+#   ) +
+#   theme_minimal()
+```
 
-## Section 9: Conclusion
+  
+
+```{r echo = FALSE}
+############# Put This in Data cleaning section!
+regular_gas_data = regular_gas_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, Timmins, Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+
+diesel_data = diesel_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, 
+         Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, 
+         Timmins, Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+
+auto_propane_data = auto_propane_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Ottawa, Windsor, London, Thunder_Bay, Toronto_East, Toronto_West, 
+         Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+
+```
+
+
+
+To prevent overfitting, we build the full model of maximum degree 5, and use cross-validation to determine the best degree model. To make sure the model perform well throughout this time period, we use 5-fold cross-validation.
+
+```{r echo=FALSE}
+
+# Data split
+regular = regular_gas_data %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
+diesel = diesel_data %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
+propane = auto_propane_data %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data), replace = TRUE))
+
+
+regular_mse = vector()
+diesel_mse = vector()
+propane_mse = vector()
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    
+    train_set = regular %>% filter(group_ind != i)
+    validation_set = regular %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  # Take average as final score
+  regular_mse[d] = mean(mse_fold)
+}
+
+
+cv_result_regular = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = regular_mse,
+  check.names = FALSE
+)
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    
+    train_set = diesel %>% filter(group_ind != i)
+    validation_set = diesel %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  diesel_mse[d] = mean(mse_fold)
+}
+
+cv_result_diesel = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = diesel_mse,
+  check.names = FALSE
+)
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    # Explicitly defining Train and Validation sets per fold
+    train_set = propane %>% filter(group_ind != i)
+    validation_set = propane %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  propane_mse[d] = mean(mse_fold)
+}
+
+cv_result_propane = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = propane_mse,
+  check.names = FALSE
+)
+
+
+
+kable(cv_result_regular, caption = "Cross-Validation Error (Regular Gas)")
+kable(cv_result_diesel, caption = "Cross-Validation Error (Diesel)")
+kable(cv_result_propane, caption = "Cross-Validation Error (Auto Propane)")
+
+plot_cv_data = data.frame(
+  Degree = rep(1:5, 3),
+  MSE = c(regular_mse, diesel_mse, propane_mse),
+  Fuel_Type = rep(c("Regular Gas", "Diesel", "Auto Propane"), each = 5)
+)
+
+ggplot(plot_cv_data, aes(x = Degree, y = MSE, color = Fuel_Type, group = Fuel_Type)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("Regular Gas" = "blue", 
+                                "Diesel" = "red", 
+                                "Auto Propane" = "orange")) +
+  labs(
+    title = "Cross-Validation Error by Polynomial Degree",
+    x = "Polynomial Degree",
+    y = "MSE",
+    color = "Fuel Type"
+  )
+```
+  
+We can see for all fuel types, from degree 1 to degree 3, MSE dropped significantly because of the increase in model complexity. However, after degree 3, the extra accuracy is marginal. Since we prefer simpler model at similar accuracy, we choose degree 3 model as the final model.
+
+```{r echo=FALSE}
+# Final models
+regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data)
+diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data)
+propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data)
+summary(regular_fit)
+summary(diesel_fit)
+summary(propane_fit)
+```
+
+
+
+## Section 8: Conclusion
 
 \pagebreak
 
-## Section 10: Appendix
+## Section 9: Appendix
 
 ### Section 1: Introduction
 
@@ -809,7 +992,128 @@ ggplot(plot_data, aes(x = Means, fill = Fuel_Type)) +
 ```
 
 ### Section 7: Regression Analysis
+```{r eval=FALSE}
 
-### Section 8: Model Validation
+# Data split
+regular = regular_gas_data %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
+diesel = diesel_data %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
+propane = auto_propane_data %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data), replace = TRUE))
 
-### Section 9: Conclusion
+
+regular_mse = vector()
+diesel_mse = vector()
+propane_mse = vector()
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    
+    train_set = regular %>% filter(group_ind != i)
+    validation_set = regular %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  # Take average as final score
+  regular_mse[d] = mean(mse_fold)
+}
+
+
+cv_result_regular = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = regular_mse,
+  check.names = FALSE
+)
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    
+    train_set = diesel %>% filter(group_ind != i)
+    validation_set = diesel %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  diesel_mse[d] = mean(mse_fold)
+}
+
+cv_result_diesel = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = diesel_mse,
+  check.names = FALSE
+)
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    # Explicitly defining Train and Validation sets per fold
+    train_set = propane %>% filter(group_ind != i)
+    validation_set = propane %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  propane_mse[d] = mean(mse_fold)
+}
+
+cv_result_propane = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = propane_mse,
+  check.names = FALSE
+)
+
+
+
+kable(cv_result_regular, caption = "Cross-Validation Error (Regular Gas)")
+kable(cv_result_diesel, caption = "Cross-Validation Error (Diesel)")
+kable(cv_result_propane, caption = "Cross-Validation Error (Auto Propane)")
+
+plot_cv_data = data.frame(
+  Degree = rep(1:5, 3),
+  MSE = c(regular_mse, diesel_mse, propane_mse),
+  Fuel_Type = rep(c("Regular Gas", "Diesel", "Auto Propane"), each = 5)
+)
+
+ggplot(plot_cv_data, aes(x = Degree, y = MSE, color = Fuel_Type, group = Fuel_Type)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("Regular Gas" = "blue", 
+                                "Diesel" = "red", 
+                                "Auto Propane" = "orange")) +
+  labs(
+    title = "Cross-Validation Error by Polynomial Degree",
+    x = "Polynomial Degree",
+    y = "MSE",
+    color = "Fuel Type"
+  )
+```
+
+
+```{r eval=FALSE}
+# Final models
+regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data)
+diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data)
+propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data)
+summary(regular_fit)
+summary(diesel_fit)
+summary(propane_fit)
+```
+
+
+
+
+
+### Section 8: Conclusion
