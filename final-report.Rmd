@@ -562,12 +562,14 @@ To prevent overfitting, we build the full model of maximum degree 5, and use cro
 ```{r echo=FALSE}
 
 # Data split
-regular = regular_gas_data %>% 
-  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
-diesel = diesel_data %>% 
-  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
-propane = auto_propane_data %>% 
-  mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data), replace = TRUE))
+regular = regular_gas_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data_reg), replace = TRUE))
+
+diesel = diesel_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(diesel_data_reg), replace = TRUE))
+
+propane = auto_propane_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data_reg), replace = TRUE))
 
 
 regular_mse = vector()
@@ -587,10 +589,8 @@ for(d in 1:5) {
     mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
   }
   
-  # Take average as final score
   regular_mse[d] = mean(mse_fold)
 }
-
 
 cv_result_regular = data.frame(
   "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
@@ -624,7 +624,7 @@ for(d in 1:5) {
   mse_fold = vector() 
 
   for(i in 1:5) {
-    # Explicitly defining Train and Validation sets per fold
+    
     train_set = propane %>% filter(group_ind != i)
     validation_set = propane %>% filter(group_ind == i)
     
@@ -641,7 +641,6 @@ cv_result_propane = data.frame(
   "Cross-Validated MSE" = propane_mse,
   check.names = FALSE
 )
-
 
 
 kable(cv_result_regular, caption = "Cross-Validation Error (Regular Gas)")
@@ -672,9 +671,10 @@ We can see for all fuel types, from degree 1 to degree 3, MSE dropped significan
 
 ```{r echo=FALSE}
 # Final models
-regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data)
-diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data)
-propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data)
+regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data_reg)
+diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data_reg)
+propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data_reg)
+
 summary(regular_fit)
 summary(diesel_fit)
 summary(propane_fit)
@@ -1035,12 +1035,14 @@ ggplot(plot_data, aes(x = Means, fill = Fuel_Type)) +
 ```{r eval=FALSE}
 
 # Data split
-regular = regular_gas_data %>% 
-  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
-diesel = diesel_data %>% 
-  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data), replace = TRUE))
-propane = auto_propane_data %>% 
-  mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data), replace = TRUE))
+regular = regular_gas_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data_reg), replace = TRUE))
+
+diesel = diesel_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(diesel_data_reg), replace = TRUE))
+
+propane = auto_propane_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data_reg), replace = TRUE))
 
 
 regular_mse = vector()
@@ -1060,10 +1062,8 @@ for(d in 1:5) {
     mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
   }
   
-  # Take average as final score
   regular_mse[d] = mean(mse_fold)
 }
-
 
 cv_result_regular = data.frame(
   "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
@@ -1097,7 +1097,7 @@ for(d in 1:5) {
   mse_fold = vector() 
 
   for(i in 1:5) {
-    # Explicitly defining Train and Validation sets per fold
+    
     train_set = propane %>% filter(group_ind != i)
     validation_set = propane %>% filter(group_ind == i)
     
@@ -1114,7 +1114,6 @@ cv_result_propane = data.frame(
   "Cross-Validated MSE" = propane_mse,
   check.names = FALSE
 )
-
 
 
 kable(cv_result_regular, caption = "Cross-Validation Error (Regular Gas)")
@@ -1139,21 +1138,20 @@ ggplot(plot_cv_data, aes(x = Degree, y = MSE, color = Fuel_Type, group = Fuel_Ty
     y = "MSE",
     color = "Fuel Type"
   )
+
+
 ```
 
 
 ```{r eval=FALSE}
 # Final models
-regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data)
-diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data)
-propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data)
+regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data_reg)
+diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data_reg)
+propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data_reg)
+
 summary(regular_fit)
 summary(diesel_fit)
 summary(propane_fit)
 ```
 
 
-
-
-
-### Section 8: Conclusion
