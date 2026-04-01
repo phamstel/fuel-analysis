@@ -41,7 +41,7 @@ fluctuations are not captured. It also includes three regional average columns
 (Ontario, Northern Ontario, Southern Ontario), which do not correspond to the 
 simple average of the included cities, indicating they were sourced externally.
 
-## Section 3: Data Preparation/Cleaning
+## Section 3: Data Cleaning
 Prior to analysis, it is important to highlight certain features of the raw 
 data set that affect how it should be handled:
 
@@ -95,7 +95,8 @@ the fuel type names in French.
 ### 2. Handling of Zero Values
 Values recorded as 0 in the city-level columns are interpreted as missing data, 
 since these 0s do not represent actual prices. To prevent these zeros from 
-affecting computations, all 0 values are converted to NA prior to analysis.
+affecting computations and interpretation of the data, all 0 values are 
+converted to NA prior to analysis.
 
 ```{r eval = TRUE, echo = FALSE, message = FALSE}
 d = d %>%
@@ -103,20 +104,38 @@ d = d %>%
 ```
 
 ### 3. Conversion of the Date Column
-The Week column, originally recorded as a character string, was converted to a 
+The Date column, originally recorded as a character string, was converted to a 
 Date type to ensure proper chronological ordering and accurate calculations. 
-This allows for correct filtering, aggregation, and plotting over time, and 
-ensures that weekly comparisons between cities are reliable.
+This allows for a better interpretation of the data, correct filtering, 
+aggregation, and plotting over time, and ensures that weekly comparisons between 
+cities are reliable.
 
 ```{r eval = TRUE, echo = FALSE, message = FALSE}
 d = d %>%
   mutate(Date = as.Date(Date))
 ```
 
-### 4. Categorization of the Data Set
+### 4. Filtering Dates
+After looking at the data, we notice that there is too much missing data before
+the year 2021, so we restrict the scope to data from January 1, 2021 and 
+onwards. This ensures the analysis focuses on recent market trends rather than 
+historical outliers.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+d = d %>%
+  filter(Date >= as.Date("2021-01-01"))
+```
+
+### 5. Categorization of the Data Set
 As mentioned above, the data set includes six fuel types. To enable clearer 
 and more accurate comparisons between cities, the data will be analyzed 
 separately for each fuel type.
+
+To ensure our analysis provides a comprehensive view of the 
+transportation sector, we will focus our statistical inference on four distinct 
+fuel categories: Regular Unleaded Gasoline (representing the majority of 
+consumer vehicles), Diesel (representing commercial transit), as well as Auto 
+Propane (representing alternative fuels). 
 
 ```{r eval = TRUE, echo = FALSE, message = FALSE}
 regular_gas_data = d %>%
@@ -127,31 +146,74 @@ diesel_data = d %>%
   filter(Fuel_Type == "Diesel") %>%
   select(!Fuel_Type)
 
-natural_gas_data = d %>%
-  filter(Fuel_Type == "Compressed Natural Gas") %>%
-  select(!Fuel_Type)
-
-mid_gas_data = d %>%
-  filter(Fuel_Type == "Mid-Grade Gasoline") %>%
-  select(!Fuel_Type) 
-
-premium_gas_data = d %>%
-  filter(Fuel_Type == "Premium Gasoline") %>%
-  select(!Fuel_Type)
-
 auto_propane_data = d %>%
   filter(Fuel_Type == "Auto Propane") %>%
   select(!Fuel_Type)
-
 ```
+
+## Section 4: Data Preparation for Regression
+
+### 1. Variable Selection
+We first decide to drop the Southern_Ontario_Average and the 
+Northern_Ontario_Average variables.
+
+### 2. Data Reshaping
+We then pivot the specific city columns from a "wide" to a "long" format, which 
+creates the single categorical predictor variable (City) required by R's 
+modeling functions. 
+
+### 3. Handling Missing Values
+Since the data is restricted from 2021 to after, there is less empty values, so
+we decide to remove the empty values for better and more accurate analysis.
+
+### 4. Creating Another Feature
+Finally, we convert the Date into a continuous numeric Time_Index to 
+mathematically support the polynomial time trends needed for our analysis.
+
+So we use the Auto Propane Data as the example to show the data set changes.
+
+**Original:**
+```{r echo = FALSE}
+glimpse(auto_propane_data)
+```
+
+```{r eval = TRUE, echo = FALSE}
+regular_gas_data_reg = regular_gas_data %>%
+  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, Timmins, Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+
+diesel_data_reg = diesel_data %>%
+  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, 
+         Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, 
+         Timmins, Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+
+auto_propane_data_reg = auto_propane_data %>%
+  select(Date, Ottawa, Windsor, London, Thunder_Bay, Toronto_East, Toronto_West, 
+         Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+```
+
+**New:**
+```{r echo = FALSE}
+glimpse(auto_propane_data)
+```
+
 
 ## Section 4: Exploratory Data Analysis
 ### Visualizations
 
-We want
+We look at weekly fuel prices in Ontario, sorted by type.
 
 ```{r eval = TRUE, echo = FALSE, warning = FALSE}
 d %>% 
+  filter(Fuel_Type %in% c("Regular Unleaded Gasoline", "Diesel", "Auto Propane")) %>%
   ggplot(aes(x = Date, y = Ontario_Average, color = Fuel_Type)) + 
   geom_line() +
   labs(
@@ -160,6 +222,20 @@ d %>%
     y = "Average Fuel Price (cents/litre)",
     color = "Fuel Type")
 ```
+
+The overall trend shows how fuel prices evolved over time, including major 
+increases and periods of volatility.
+
+Next we compare the average prices by city.
+
+```{r}
+regular_gas_data_reg %>%
+  group_by(City) %>%
+  summarise(avg_price = mean(Price, na.rm = TRUE)) %>%
+  ggplot(aes(x = City, y = avg_price, fill = City)) +
+  geom_col()
+```
+
 
 ## Section 5: Statistical Inference
 To answer our research question on how prices differ across cities, we will 
@@ -173,6 +249,7 @@ Additionally, we have restricted our analysis to recent data (2021–2026) to
 ensure our findings reflect the current economic landscape and provide the most 
 relevant insights. Because prices are recorded on the exact same weeks, we will 
 analyze the paired differences (Northern Average - Southern Average).
+
 ```{r eval = TRUE, echo = FALSE, message = FALSE}
 # REGULAR GASOLINE
 regional_compare_gas = regular_gas_data %>%
@@ -219,6 +296,7 @@ ci_lower_propane = t_test_propane$conf.int[1]
 ci_upper_propane = t_test_propane$conf.int[2]
 p_val_propane = t_test_propane$p.value
 ```
+
 ### 5.1 Confidence Interval
 We estimate difference in gas prices (Northern Average - Southern Average) 
 across the available weeks between 2021-2026 for Regular Unleaded Gasoline,
@@ -484,38 +562,6 @@ In order to better understand the fuel price difference between the cities, we f
 #   ) +
 #   theme_minimal()
 ```
-
-  
-
-```{r echo = FALSE}
-############# Put This in Data cleaning section!
-regular_gas_data = regular_gas_data %>%
-  filter(Date >= as.Date("2021-01-01")) %>%
-  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, Timmins, Kenora) %>%
-  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
-  drop_na() %>%
-  mutate(Time_Index = as.numeric(Date - min(Date)))
-
-diesel_data = diesel_data %>%
-  filter(Date >= as.Date("2021-01-01")) %>%
-  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, 
-         Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, 
-         Timmins, Kenora) %>%
-  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
-  drop_na() %>%
-  mutate(Time_Index = as.numeric(Date - min(Date)))
-
-auto_propane_data = auto_propane_data %>%
-  filter(Date >= as.Date("2021-01-01")) %>%
-  select(Date, Ottawa, Windsor, London, Thunder_Bay, Toronto_East, Toronto_West, 
-         Kenora) %>%
-  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
-  drop_na() %>%
-  mutate(Time_Index = as.numeric(Date - min(Date)))
-
-```
-
-
 
 To prevent overfitting, we build the full model of maximum degree 5, and use cross-validation to determine the best degree model. To make sure the model perform well throughout this time period, we use 5-fold cross-validation.
 
