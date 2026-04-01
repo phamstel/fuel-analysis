@@ -253,9 +253,7 @@ analyze the paired differences (Northern Average - Southern Average).
 ```{r eval = TRUE, echo = FALSE, message = FALSE}
 # REGULAR GASOLINE
 regional_compare_gas = regular_gas_data %>%
-  filter(Date >= as.Date("2021-01-01")) %>%
   select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
-  drop_na() %>%
   mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
 
 t_test_gas = t.test(regional_compare_gas$Northern_Ontario_Average, 
@@ -268,9 +266,7 @@ p_val_gas = t_test_gas$p.value
 
 # DIESEL
 regional_compare_diesel = diesel_data %>%
-  filter(Date >= as.Date("2021-01-01")) %>%
   select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
-  drop_na() %>%
   mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
 
 t_test_diesel = t.test(regional_compare_diesel$Northern_Ontario_Average,
@@ -283,9 +279,7 @@ p_val_diesel = t_test_diesel$p.value
 
 # AUTO PROPANE
 regional_compare_propane = auto_propane_data %>%
-  filter(Date >= as.Date("2021-01-01")) %>%
   select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
-  drop_na() %>%
   mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
 
 t_test_propane = t.test(regional_compare_propane$Northern_Ontario_Average,
