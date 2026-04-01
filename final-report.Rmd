@@ -367,9 +367,9 @@ ht_table = data.frame(
     "Auto Propane"
   ),
   "p-value" = c(
-    format.pval(p_val_gas, digits = 3, eps = 0.001),
-    format.pval(p_val_diesel, digits = 3, eps = 0.001),
-    format.pval(p_val_propane, digits = 3, eps = 0.001)
+    format.pval(p_val_gas),
+    format.pval(p_val_diesel),
+    format.pval(p_val_propane)
   ),
   check.names = FALSE
 )
