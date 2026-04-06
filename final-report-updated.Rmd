@@ -1,0 +1,1044 @@
+---
+title: "Analysis of Fuel Price Differences between Cities in Ontario"
+author: "Michael Zhou, Nigel Li, Stella Pham"
+date: "2026/4/6"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(knitr)
+library(ggplot2)
+library(modelsummary)
+library(kableExtra)
+```
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+raw_data = read.csv("data/fueltypesall.csv")
+```
+
+### Section 1: Introduction
+**Background of the Data: **
+This data set contains weekly retail prices for six fuel types: Regular Unleaded Gasoline, Mid‑Grade Gasoline, Premium Gasoline, Diesel, Auto Propane, and Compressed Natural Gas across 10 markets in Ontario. Prices are expressed in Canadian cents per litre, with compressed natural gas measured in cents per gasoline-equivalent litre. The data set spans from January 3, 1990 to March 16, 2026 and is updated weekly with the latest retail fuel price data published by the Government of Ontario.
+
+**Research Question: **
+How does the price differ between cities in Ontario?
+
+### Section 2: Data Description
+The data set contains 11,252 weeks of data from 1990 to March 16, 2026, covering six fuel types. Each row represents a weekly average of fuel prices, so daily fluctuations are not captured. It also includes three regional average columns (Ontario, Northern Ontario, Southern Ontario), which do not correspond to the simple average of the included cities, indicating they were sourced externally.
+
+### Section 3: Data Cleaning
+The data set contains both French and English labels. To maintain consistency, 
+variables are standardized into a single language format. Then, we converted all 0 to NA prior to analysis. And the Date column was converted from string typr to date type. We noticed that there are too many missing data before the year 2021, so we only analyze data from 2021 onwards. Also, we will focus on three fuel categories: Regular Unleaded Gasoline, Diesel, and Auto Propane. For regression modeling, we pivot the specific city columns from wide to long format to create a categorical predictor variable (City). Then, we convert the Date into a continuous numeric Time_Index.  
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+d = raw_data %>%
+  rename(
+    Toronto_West = Toronto.West.Ouest,
+    Toronto_East = Toronto.East.Est,
+    St_Catharines = St..Catharine.s,
+    Sault_Saint_Marie = Sault.Saint.Marie,
+    Thunder_Bay = Thunder.Bay,
+    North_Bay = North.Bay,
+    Parry_Sound = Parry.Sound,
+    Ontario_Average = Ontario.Average.Moyenne.provinciale,
+    Southern_Ontario_Average = Southern.Average.Moyenne.du.sud.de.l.Ontario,
+    Northern_Ontario_Average = Northern.Average.Moyenne.du.nord.de.l.Ontario,
+    Fuel_Type = Fuel.Type
+  )
+
+d = d %>% 
+  select(!Type.de.carburant)
+
+d = d %>%
+  mutate(across(where(is.numeric), ~ na_if(., 0)))
+
+d = d %>%
+  mutate(Date = as.Date(Date))
+
+d = d %>%
+  filter(Date >= as.Date("2021-01-01"))
+
+regular_gas_data = d %>%
+  filter(Fuel_Type == "Regular Unleaded Gasoline") %>%
+  select(!Fuel_Type)
+
+diesel_data = d %>%
+  filter(Fuel_Type == "Diesel") %>%
+  select(!Fuel_Type)
+
+auto_propane_data = d %>%
+  filter(Fuel_Type == "Auto Propane") %>%
+  select(!Fuel_Type)
+
+regular_gas_data_reg = regular_gas_data %>%
+  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, Timmins, Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+
+diesel_data_reg = diesel_data %>%
+  select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, 
+         Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, 
+         Timmins, Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+
+auto_propane_data_reg = auto_propane_data %>%
+  select(Date, Ottawa, Windsor, London, Thunder_Bay, Toronto_East, Toronto_West, 
+         Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>%
+  mutate(Time_Index = as.numeric(Date - min(Date)))
+```
+
+### Section 4: Exploratory Data Analysis
+We plot the overall trend shows how fuel prices evolved over time and the average of regular gas price for each city. We can see the prices are extremely volatile over time. Also, Kenora and Timmins have the highest average regular gas price, while Peterborough has the lowest average price.  
+
+Then, we summarize the distribution of regular gas prices across Ontario. We can see that Northern Ontario Price is contently more expensive than Southern Ontario Price.
+```{r eval = TRUE, echo = FALSE, warning = FALSE, fig.show="hold", out.width="50%"}
+d %>% 
+  filter(Fuel_Type %in% c("Regular Gas", "Diesel", "Auto Propane")) %>%
+  ggplot(aes(x = Date, y = Ontario_Average, color = Fuel_Type)) + 
+  geom_line() +
+  labs(
+    title = "Weekly Fuel Prices in Ontario by Fuel Type",
+    x = "Week",
+    y = "Average Fuel Price (cents/litre)",
+    color = "Fuel Type")
+# Next we compare the average prices by city.
+regular_gas_data_reg %>%
+  group_by(City) %>%
+  summarise(avg_price = mean(Price, na.rm = TRUE)) %>%
+  ggplot(aes(x = City, y = avg_price, fill = City)) +
+  geom_col() + theme(axis.text.x = element_blank()) +
+  labs(title = "Regular Gas Price by Cities")
+```
+
+```{r echo = FALSE}
+summary_data = regular_gas_data %>% filter(Date >= as.Date("2021-01-01")) %>% select(Ontario_Average, Southern_Ontario_Average, Northern_Ontario_Average)
+
+summary(summary_data)
+```
+
+
+### Section 5: Statistical Inference
+To answer our research question on how prices differ across cities, we will 
+compare the Northern Ontario Average price to the Southern Ontario Average 
+price.
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+# REGULAR GASOLINE
+regional_compare_gas = regular_gas_data %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_gas = t.test(regional_compare_gas$Northern_Ontario_Average, 
+                    regional_compare_gas$Southern_Ontario_Average,
+                    paired = TRUE)
+mean_diff_gas = t_test_gas$estimate
+ci_lower_gas = t_test_gas$conf.int[1]
+ci_upper_gas = t_test_gas$conf.int[2]
+p_val_gas = t_test_gas$p.value
+
+# DIESEL
+regional_compare_diesel = diesel_data %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_diesel = t.test(regional_compare_diesel$Northern_Ontario_Average,
+                       regional_compare_diesel$Southern_Ontario_Average,
+                       paired = TRUE)
+mean_diff_diesel = t_test_diesel$estimate
+ci_lower_diesel = t_test_diesel$conf.int[1]
+ci_upper_diesel = t_test_diesel$conf.int[2]
+p_val_diesel = t_test_diesel$p.value
+
+# AUTO PROPANE
+regional_compare_propane = auto_propane_data %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_propane = t.test(regional_compare_propane$Northern_Ontario_Average,
+                        regional_compare_propane$Southern_Ontario_Average,
+                        paired = TRUE)
+mean_diff_propane = t_test_propane$estimate
+ci_lower_propane = t_test_propane$conf.int[1]
+ci_upper_propane = t_test_propane$conf.int[2]
+p_val_propane = t_test_propane$p.value
+```
+
+#### 5.1 Confidence Interval
+We estimate difference in gas prices (Northern Average - Southern Average) 
+across the available weeks between 2021-2026 for Regular Unleaded Gasoline,
+Diesel, and Auto Propane.  
+```{r eval = TRUE, echo = FALSE, message = T}
+# Create a dataframe to store the results
+summary_table = data.frame(
+  "Fuel Type" = c(
+    "Regular Unleaded Gasoline", 
+    "Diesel", 
+    "Auto Propane"
+  ),
+  "Mean Difference (cents/litre)" = c(
+    round(mean_diff_gas, 2), 
+    round(mean_diff_diesel, 2),
+    round(mean_diff_propane, 2)
+  ),
+  "95% Confidence Interval" = c(
+    paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),
+    paste0("(", round(ci_lower_diesel, 2), ", ", round(ci_upper_diesel, 2),
+           ")"),
+    paste0("(", round(ci_lower_propane, 2), ", ", round(ci_upper_propane, 2),
+           ")")
+  ),
+  check.names = FALSE # This prevents R from putting periods in the column names
+)
+
+# Use kable to print a perfectly formatted table
+kable(summary_table, 
+      caption = "Average Price Differences: Northern vs. Southern Ontario",
+      align = c("c", "c", "c"))
+```
+  
+**Interpretation**:  
+Based on data from the last five years, we are 95% confident that the true 
+average difference in fuel prices between Northern and Southern Ontario falls 
+within the following intervals (in cents per litre): **Regular Gas:** `r round(ci_lower_gas, 2)` to `r round(ci_upper_gas, 2)`, **Diesel:** `r round(ci_lower_diesel, 2)` to `r round(ci_upper_diesel, 2)`, **Auto Propane:** `r round(ci_lower_propane, 2)` to `r round(ci_upper_propane,2)`
+
+#### 5.2 Hypothesis Testing
+To rigorously answer our research question regarding regional price differences,
+we conducted a paired t-test for each of our three fuel types. We set
+our significance level at $\alpha = 0.05$.
+
+**Hypotheses:**
+Let $\mu_d$ represent the true mean difference in weekly fuel prices between 
+Northern and Southern Ontario ($\mu_{North} - \mu_{South}$).  
+
+* **Null Hypothesis ($H_0$):** $\mu_d = 0$. There is no true mean difference in 
+fuel prices between Northern and Southern Ontario.
+* **Alternative Hypothesis ($H_1$):** $\mu_d \neq 0$. There is a statistically significant mean difference in fuel prices between Northern and Southern Ontario.
+
+**Results:**
+
+```{r eval = TRUE, echo = FALSE, message = FALSE}
+# Create a dataframe for the Hypothesis Testing results
+ht_table = data.frame(
+  "Fuel Type" = c(
+    "Regular Unleaded Gasoline", 
+    "Diesel", 
+    "Auto Propane"
+  ),
+  "p-value" = c(
+    format.pval(p_val_gas),
+    format.pval(p_val_diesel),
+    format.pval(p_val_propane)
+  ),
+  check.names = FALSE
+)
+
+# Print the table using kable
+kable(ht_table, 
+      caption = "Paired T-Test Results: Regional Price Differences",
+      align = c("l", "c", "c"))
+```
+
+**Conclusion:**   
+As shown in the table above, the calculated p-values for all four fuel 
+types are strictly less than 0.05. Thus, the price differences for every fuel category are statistically significant, and we reject the null hypothesis ($H_0$) in all cases.
+
+### Section 6: Bootstrapping
+To ensure our findings are robust and not skewed by these potential outliers, we
+utilize Bootstrapping. By resampling our paired regional price differences 1,000 times with replacement, we can generate a distribution of the mean difference without relying on assumptions of normality.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+set.seed(57)  # Set a seed for exact reproducibility
+B = 1000      # Number of bootstrap iterations
+
+# Create a custom function using the tidyverse method taught in class
+get_boot_ci = function(df) {
+  
+  # Define the single bootstrap step as taught in lecture
+  boot_function = function() {
+    # Resample the dataframe 
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    
+    # Calculate the mean difference
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    
+    # Extract the value
+    return(boot_mean[1,1])
+  }
+  
+  # Replicate the process B times
+  boot_means = replicate(B, boot_function())
+  
+  # Extract the 2.5% and 97.5% percentiles for the 95% CI
+  ci = quantile(boot_means, probs = c(0.025, 0.975))
+  return(c(lower = ci[1], upper = ci[2]))
+}
+
+# Apply the function to all three fuel types using the dataframes we made in 
+# Section 5
+boot_gas = get_boot_ci(regional_compare_gas)
+boot_diesel = get_boot_ci(regional_compare_diesel)
+boot_propane = get_boot_ci(regional_compare_propane)
+```
+
+#### 6.1 Bootstrap Confidence Intervals vs. Calssical Intervals
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+boot_table = data.frame(
+  "Fuel Type" = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"),
+  "Classical 95% CI (T-Test)" = c(
+    paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),
+    paste0("(", round(ci_lower_diesel, 2), ", ", 
+           round(ci_upper_diesel, 2), ")"),
+    paste0("(", round(ci_lower_propane, 2), ", ", 
+           round(ci_upper_propane, 2), ")")
+  ),
+  "Bootstrap 95% CI" = c(
+    paste0("(", round(boot_gas["lower.2.5%"], 2), ", ",
+           round(boot_gas["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_diesel["lower.2.5%"], 2), ", ",
+           round(boot_diesel["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_propane["lower.2.5%"], 2), ", ",
+           round(boot_propane["upper.97.5%"], 2), ")")
+  ),
+  check.names = FALSE
+)
+
+kable(boot_table, caption = 
+        "Comparison of Classical and Bootstrapped 95% Confidence Intervals",
+      align = c("l", "c", "c"))
+```
+
+#### 6.2 Visualization of Bootstarpped Means
+To better conceptualize this process, we can visualize the 1,000 resampled mean 
+differences for Regular Unleaded Gasoline. The red dashed lines represent the 
+boundaries of our 95% Bootstrap Confidence Interval.
+
+```{r eval = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.align='center', fig.width=6, fig.height=3}
+# 1. Create a function to extract the 1000 raw means for plotting
+get_boot_means = function(df) {
+  boot_func = function() {
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    return(boot_mean[1,1])
+  }
+  return(replicate(B, boot_func()))
+}
+
+# 2. Generate the 1,000 means for the three fuel types
+boot_means_gas = get_boot_means(regional_compare_gas)
+boot_means_diesel = get_boot_means(regional_compare_diesel)
+boot_means_propane = get_boot_means(regional_compare_propane)
+
+# 3. Combine everything into one large dataframe AND set specific order (Levels)
+plot_data = data.frame(
+  Fuel_Type = factor(
+    rep(c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"), each = B),
+    levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane") 
+    # This forces the left-to-right order
+  ),
+  Means = c(boot_means_gas, boot_means_diesel, boot_means_propane)
+)
+
+# 4. Create a dataframe for the Confidence Intervals with the same ordered 
+#factor
+ci_data = data.frame(
+  Fuel_Type = factor(
+    c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"),
+    levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane")
+  ),
+  Lower = c(boot_gas[1], boot_diesel[1], boot_propane[1]),
+  Upper = c(boot_gas[2], boot_diesel[2], boot_propane[2])
+)
+
+# 5. Plot using facet_wrap, adding colors and forcing 3 columns (left-to-right)
+ggplot(plot_data, aes(x = Means, fill = Fuel_Type)) +
+  geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.8,
+                 show.legend = FALSE) +
+  geom_vline(data = ci_data, aes(xintercept = Lower), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  geom_vline(data = ci_data, aes(xintercept = Upper), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  scale_fill_manual(values = c(
+    "Regular Unleaded Gasoline" = "lightblue", 
+    "Diesel" = "orange", 
+    "Auto Propane" = "lightgreen")) +
+  facet_wrap(~ Fuel_Type, scales = "free_x", ncol = 3) + 
+  labs(title = "Bootstrap Distributions of Mean Regional Differences",
+    subtitle = "Northern Avg - Southern Avg (1,000 Resamples)",
+    x = "Mean Difference (cents/litre)", 
+    y = "Frequency") +
+  theme_minimal() +
+  theme(strip.text = element_text(face = "bold", size = 10))
+```
+
+#### 6.3 Interpretation
+As demonstrated in the comparison table, our non-parametric Bootstrap confidence
+intervals are nearly identical to the classical parametric intervals calculated 
+in Section 5. Furthermore, the visualized distributions of the resampled means 
+for all three fuel types show clear, bell-shaped curves entirely above zero.  
+
+### Section 7: Regression Analysis
+In order to better understand the fuel price difference between the cities, we fit a regression model with time and city as predictors. From the weekly fuel price plot in Section 4, we can clearly see the correlation between time and fuel price is non-linear. Thus, we fit a polynomial regression model.  
+
+To prevent overfitting, we build the full model of maximum degree 5, and use cross-validation to determine the best degree model. To make sure the model perform well throughout this time period, we use 5-fold cross-validation. This guarantees that every single weekly data is used for both training and validation.
+
+```{r echo=FALSE,  fig.show="hold", out.width="50%"}
+# Visualization on polynomial fitting
+plot_data = regular_gas_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  mutate(Time_Index = as.numeric(Date - min(Date))) %>%
+  drop_na(Ontario_Average)
+
+ggplot(plot_data, aes(x = Time_Index, y = Ontario_Average)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 1),
+              aes(color = "Deg 1"), se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2),
+              aes(color = "Deg 2"), se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3),
+              aes(color = "Deg 3"), se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 5),
+              aes(color = "Deg 5"), se = FALSE, linewidth = 1) +
+  labs(
+    title = "Polynomial Fits",
+    x = "Days since 2021",
+    y = "Ontario Average Fuel Price (cents/litre)",
+    color = "Model Fit"
+  ) +  theme_minimal()
+
+
+# Data split
+regular = regular_gas_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data_reg), replace = TRUE))
+
+diesel = diesel_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(diesel_data_reg), replace = TRUE))
+
+propane = auto_propane_data_reg %>% 
+  mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data_reg), replace = TRUE))
+
+
+regular_mse = vector()
+diesel_mse = vector()
+propane_mse = vector()
+
+# Cross Validation
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    
+    train_set = regular %>% filter(group_ind != i)
+    validation_set = regular %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  regular_mse[d] = mean(mse_fold)
+}
+
+cv_result_regular = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = regular_mse,
+  check.names = FALSE
+)
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    
+    train_set = diesel %>% filter(group_ind != i)
+    validation_set = diesel %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  diesel_mse[d] = mean(mse_fold)
+}
+
+cv_result_diesel = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = diesel_mse,
+  check.names = FALSE
+)
+
+for(d in 1:5) {
+  mse_fold = vector() 
+
+  for(i in 1:5) {
+    
+    train_set = propane %>% filter(group_ind != i)
+    validation_set = propane %>% filter(group_ind == i)
+    
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  
+  propane_mse[d] = mean(mse_fold)
+}
+
+cv_result_propane = data.frame(
+  "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),
+  "Cross-Validated MSE" = propane_mse,
+  check.names = FALSE
+)
+
+
+# Summary table
+# kable(cv_result_regular, caption = "Cross-Validation Error (Regular Gas)")
+# kable(cv_result_diesel, caption = "Cross-Validation Error (Diesel)")
+# kable(cv_result_propane, caption = "Cross-Validation Error (Auto Propane)")
+
+# Summary plot
+plot_cv_data = data.frame(
+  Degree = rep(1:5, 3),
+  MSE = c(regular_mse, diesel_mse, propane_mse),
+  Fuel_Type = rep(c("Regular Gas", "Diesel", "Auto Propane"), each = 5)
+)
+
+ggplot(plot_cv_data, aes(x = Degree, y = MSE, color = Fuel_Type, group = Fuel_Type)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = c("Regular Gas" = "lightblue", 
+                                "Diesel" = "orange", 
+                                "Auto Propane" = "lightgreen")) +
+  labs(title = "Cross-Validation Error",
+    x = "Polynomial Degree",
+    y = "MSE",
+    color = "Fuel Type")
+```
+  
+We can see for all fuel types, from degree 1 to degree 3, MSE dropped significantly as the model complexity increases. However, after degree 3, the extra accuracy is marginal. To prevent overfitting, we prefer simpler model given similar accuracy. Thus, we choose degree 3 model as the final model for all fuel types.  
+
+We fit the three models, and plot the fitted polynomial regression for regular gas and diesel in Kenora (Baseline), St Catharines and Toronto East to see the fit, and for auto propane in Kenora (Baseline) and Toronto East. We can see that the polynomial regression fits mostly follow the price trends.
+
+```{r echo = FALSE}
+# Final models
+regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data_reg)
+diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data_reg)
+propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data_reg)
+```
+
+:::: {style="display: flex; gap: 1rem;"}
+
+::: {}
+```{r, echo=FALSE, comment=''}
+summary(regular_fit)
+```
+:::
+
+::: {}
+```{r, echo=FALSE, comment=''}
+summary(diesel_fit)
+```
+:::
+
+::: {}
+```{r, echo=FALSE, comment=''}
+summary(propane_fit)
+```
+:::
+
+::::
+
+```{r echo = FALSE, fig.show="hold", out.width="33%"}
+# Plot the fitted model for 3 cities, regular gas
+plot_cities_1 = c("Kenora", "Toronto_East", "St_Catharines")
+plot_data_1 = regular_gas_data_reg %>% filter(City %in% plot_cities_1)
+
+ggplot(plot_data_1, aes(x = Time_Index, y = Price, color = City)) +
+  geom_point(color = "grey", alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE) +
+  facet_wrap(~ City) +
+  scale_color_manual(values = c("Kenora" = "#4548B5", 
+                                "Toronto_East" = "#7945B5", 
+                                "St_Catharines" = "#4581B5")) +
+  labs(title = "Final Model Fit (Regular Gas)",
+    x = "Days since 2021",
+    y = "Price (cents/litre)") +
+  theme_minimal() + theme(legend.position = "none")
+
+# Plot the fitted model for 3 cities, diesel
+plot_cities_1 = c("Kenora", "Toronto_East", "St_Catharines")
+plot_data_2 = diesel_data_reg %>% filter(City %in% plot_cities_1)
+
+ggplot(plot_data_2, aes(x = Time_Index, y = Price, color = City)) +
+  geom_point(color = "grey", alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE) +
+  facet_wrap(~ City) +
+  scale_color_manual(values = c("Kenora" = "#D3272C", 
+                                "Toronto_East" = "#D32783", 
+                                "St_Catharines" = "#D37727")) +
+  labs(title = "Final Model Fit (Diesel)",
+    x = "Days since 2021",
+    y = "Price (cents/litre)") +
+  theme_minimal() + theme(legend.position = "none")
+
+
+# Plot the fitted model for 2 cities, auto propane
+plot_cities_2 = c("Kenora", "Toronto_East")
+plot_data_3 = auto_propane_data_reg %>% filter(City %in% plot_cities_2)
+
+ggplot(plot_data_3, aes(x = Time_Index, y = Price, color = City)) +
+  geom_point(color = "grey", alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE) +
+  facet_wrap(~ City) +
+  scale_color_manual(values = c("Kenora" = "#52A766", 
+                                "Toronto_East" = "#93A752")) +
+  labs(title = "Final Model Fit (Auto Propane)",
+    x = "Days since 2021",
+    y = "Price (cents/litre)") +
+  theme_minimal() + theme(legend.position = "none")
+```
+
+
+**Model Interpretation:**  
+- Kenora is the baseline city for all three models. We noticed that most of the city coefficients are negative, which suggests Kenora is one of the most expensive cities in Ontario.  
+
+**Regular Gas:**
+- Peterborough has the lowest regular gas price average, approximately 14.37 cents less than baseline Kenora.  
+- The p-value for CityTimmins is 0.4525 > 0.05, thus there is no significant difference in regular gas price between Kenora and Timminis. All other predictors are significant.  
+- Adjusted R-squared: 0.5203. This suggests approximately 52.0% of variance in regular gas price can be explained by this model.  
+  
+**Diesel:**
+- Windsor has the lowest diesel price average, approximately 9.65 cents less than baseline Kenora.  
+- The p-values for CitySault_Saint_Marie (0.6312), CityThunder_Bay (0.3201), and CityTimmins (0.3881) are all > 0.05. Thus, there is no significant difference in diesel price between Kenora and these Northern cities.  
+- Adjusted R-squared: 0.6066. This suggests approximately 60.7% of the variance in diesel price can be explained by this model.  
+
+**Auto Propane:**
+- Toronto East has the lowest auto propane price average, approximately 35.78 cents less than baseline Kenora.  
+- Unlike the other fuel types, Ottawa has a significantly higher price than the baseline, averaging 13.01 cents more per litre than Kenora.
+- All City predictors are significant (p < 0.05).  
+- Adjusted R-squared: 0.8549. This suggests approximately 85.5% of the variance in auto propane price can be explained by this model.  
+
+
+To make these results easier to understand, we extract the city coefficients from all three models. We plot the difference of each city with baseline Kenora.
+
+
+```{r echo=FALSE, fig.show="hold", out.width="33%"}
+r_coefs = as.data.frame(summary(regular_fit)$coefficients)
+r_coefs$Term = rownames(r_coefs)
+
+# Create a new column for cities in North and South
+r_plot = r_coefs %>%
+  filter(grepl("City", Term)) %>%
+  mutate(City = gsub("City", "", Term)) %>%
+  mutate(Region = ifelse(City %in% c("Thunder_Bay", "Timmins", "Sudbury",
+        "North_Bay", "Sault_Saint_Marie","Parry_Sound"), "Northern", "Southern"))
+
+ggplot(r_plot, aes(x = reorder(City, Estimate), y = Estimate, fill = Region)) + geom_col() + coord_flip() +
+  scale_fill_manual(values = c("Northern" = "#5B789F", "Southern" = "#5B9A9F")) +
+  labs(title = "Price Differences (Regular Gas)",
+       subtitle = "Baseline: Kenora (Northern)",
+       x = "City",
+       y = "Average Price Difference (cents/litre)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+
+
+d_coefs = as.data.frame(summary(diesel_fit)$coefficients)
+d_coefs$Term = rownames(d_coefs)
+
+d_plot = d_coefs %>%
+  filter(grepl("City", Term)) %>%
+  mutate(City = gsub("City", "", Term)) %>%
+  mutate(Region = ifelse(City %in% c("Thunder_Bay", "Timmins", "Sudbury",
+        "North_Bay", "Sault_Saint_Marie","Parry_Sound"), "Northern", "Southern"))
+
+ggplot(d_plot, aes(x = reorder(City, Estimate), y = Estimate, fill = Region)) + geom_col() + coord_flip() +
+  scale_fill_manual(values = c("Northern" = "#D44225", "Southern" = "#D49A25")) +
+  labs(title = "Price Differences (Diesel)",
+       subtitle = "Baseline: Kenora (Northern)",
+       x = "City",
+       y = "Average Price Difference (cents/litre)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+
+
+p_coefs = as.data.frame(summary(propane_fit)$coefficients)
+p_coefs$Term = rownames(p_coefs)
+
+p_plot = p_coefs %>%
+  filter(grepl("City", Term)) %>%
+  mutate(City = gsub("City", "", Term)) %>%
+  mutate(Region = ifelse(City %in% c("Thunder_Bay", "Timmins", "Sudbury",
+        "North_Bay", "Sault_Saint_Marie","Parry_Sound"), "Northern", "Southern"))
+
+ggplot(p_plot, aes(x = reorder(City, Estimate), y = Estimate, fill = Region)) + geom_col() + coord_flip() + 
+  scale_fill_manual(values = c("Northern" = "#54A66F", "Southern" = "#8BA654")) +
+  labs(title = "Price Differences (Auto Propane)",
+       subtitle = "Baseline: Kenora (Northern)",
+       x = "City",
+       y = "Average Price Difference (cents/litre)") +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+We can see that for regular gas and diesel, the northern cities are mostly more expensive than southern cities. For auto propane, the general trend continues, except for Ottawa (Southern) being noticeably more expensive than the baseline Kenora (Northern).
+
+
+### Section 8: Conclusion
+This study investigated fuel price differences among Ontario cities from 2021 to 2026, analyzing regular gasoline, diesel, and auto propane.  
+First, we noticed northern cities have higher regular gas prices than southern cities from the summary statistics. Then, we used 95% confidence intervals, paired t-tests, and bootstrap resampling to prove that fuel prices in Northern Ontario are significantly higher than in Southern Ontario. Finally, we developed 5-fold cross-validated polynomial regression models to quantify the differences between cities. The models confirmed that the fuel price in Southern Ontario is significantly cheaper than Northern Ontario, and the difference in Auto Propane is significantly larger than Regular Gas and Diesel.
+
+
+### Section 9: Appendix
+
+```{r eval = FALSE}
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(knitr)
+library(ggplot2)
+
+### Section 3: Data Preparation/Cleaning
+# Get the data
+raw_data = read.csv("data/fueltypesall.csv")
+# Rename the columns to full English
+d = raw_data %>%
+  rename(Toronto_West = Toronto.West.Ouest, Toronto_East = Toronto.East.Est,
+    St_Catharines = St..Catharine.s,Sault_Saint_Marie = Sault.Saint.Marie,
+    Thunder_Bay = Thunder.Bay,North_Bay = North.Bay,Parry_Sound = Parry.Sound,
+    Ontario_Average = Ontario.Average.Moyenne.provinciale,
+    Southern_Ontario_Average = Southern.Average.Moyenne.du.sud.de.l.Ontario,
+    Northern_Ontario_Average = Northern.Average.Moyenne.du.nord.de.l.Ontario,
+    Fuel_Type = Fuel.Type)
+
+
+# Drop the column Type.de.carburant
+d = d %>% select(!Type.de.carburant)
+# Convert 0 values to NA
+d = d %>% mutate(across(where(is.numeric), ~ na_if(., 0)))
+# Change the Date column type from char to date
+d = d %>% mutate(Date = as.Date(Date))
+
+# Separate the data set into the six fuel categories and drop the Fuel_Type 
+# column for each new data set
+regular_gas_data = d %>% filter(Fuel_Type == "Regular Unleaded Gasoline") %>% select(!Fuel_Type)
+
+diesel_data = d %>% filter(Fuel_Type == "Diesel") %>% select(!Fuel_Type)
+
+auto_propane_data = d %>% filter(Fuel_Type == "Auto Propane") %>% select(!Fuel_Type)
+
+regular_gas_data_reg = regular_gas_data %>%select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, Timmins, Kenora) %>%pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%drop_na() %>%mutate(Time_Index = as.numeric(Date - min(Date)))
+
+# Data Cleaning for Regression Model
+diesel_data_reg = diesel_data %>% select(Date, Ottawa, Windsor, London, Peterborough, Sudbury, North_Bay, Parry_Sound, Sault_Saint_Marie, St_Catharines, Thunder_Bay, Toronto_East, Toronto_West, Timmins, Kenora) %>%
+  pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%
+  drop_na() %>% mutate(Time_Index = as.numeric(Date - min(Date)))
+
+auto_propane_data_reg = auto_propane_data %>%
+  select(Date, Ottawa, Windsor, London, Thunder_Bay, Toronto_East, Toronto_West,
+  Kenora) %>%pivot_longer(cols = -Date, names_to = "City", values_to = "Price") %>%drop_na() %>% mutate(Time_Index = as.numeric(Date - min(Date)))
+
+
+### Section 4: Exploratory Data Analysis
+d %>% filter(Fuel_Type %in% c("Regular Unleaded Gasoline", "Diesel", "Auto Propane")) %>% ggplot(aes(x = Date, y = Ontario_Average, color = Fuel_Type)) + geom_line() + labs(title = "Weekly Fuel Prices in Ontario by Fuel Type",x = "Week", y = "Average Fuel Price (cents/litre)", color = "Fuel Type")
+
+# Next we compare the average prices by city
+regular_gas_data_reg %>% group_by(City) %>%
+  summarise(avg_price = mean(Price, na.rm = TRUE)) %>%
+  ggplot(aes(x = City, y = avg_price, fill = City)) +
+  geom_col() + theme(axis.text.x = element_blank()) +
+  labs(title = "Regular Gas Price by Cities")
+
+### Section 5: Statistical Inference
+
+# REGULAR GASOLINE
+regional_compare_gas = regular_gas_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_gas = t.test(regional_compare_gas$Northern_Ontario_Average, 
+                    regional_compare_gas$Southern_Ontario_Average,
+                    paired = TRUE)
+mean_diff_gas = t_test_gas$estimate
+ci_lower_gas = t_test_gas$conf.int[1]
+ci_upper_gas = t_test_gas$conf.int[2]
+p_val_gas = t_test_gas$p.value
+
+# DIESEL
+regional_compare_diesel = diesel_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_diesel = t.test(regional_compare_diesel$Northern_Ontario_Average,
+                       regional_compare_diesel$Southern_Ontario_Average,
+                       paired = TRUE)
+mean_diff_diesel = t_test_diesel$estimate
+ci_lower_diesel = t_test_diesel$conf.int[1]
+ci_upper_diesel = t_test_diesel$conf.int[2]
+p_val_diesel = t_test_diesel$p.value
+
+# AUTO PROPANE
+regional_compare_propane = auto_propane_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  select(Date, Northern_Ontario_Average, Southern_Ontario_Average) %>%
+  drop_na() %>%
+  mutate(Reg_Diff = Northern_Ontario_Average - Southern_Ontario_Average)
+
+t_test_propane = t.test(regional_compare_propane$Northern_Ontario_Average,
+                        regional_compare_propane$Southern_Ontario_Average,
+                        paired = TRUE)
+mean_diff_propane = t_test_propane$estimate
+ci_lower_propane = t_test_propane$conf.int[1]
+ci_upper_propane = t_test_propane$conf.int[2]
+p_val_propane = t_test_propane$p.value
+
+
+summary_table = data.frame( "Fuel Type" = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"  ), "Mean Difference (cents/litre)" = c(round(mean_diff_gas, 2), round(mean_diff_diesel, 2),round(mean_diff_propane, 2)),
+  "95% Confidence Interval" = c(paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),paste0("(", round(ci_lower_diesel, 2), ", ", round(ci_upper_diesel, 2),")"),paste0("(", round(ci_lower_propane, 2), ", ", round(ci_upper_propane, 2),")")),check.names = FALSE)
+
+kable(summary_table, 
+      caption = "Average Price Differences: Northern vs. Southern Ontario",
+      align = c("c", "c", "c"))
+
+# Hypothesis Testing results
+ht_table = data.frame("Fuel Type" = c("Regular Unleaded Gasoline","Diesel", "Auto Propane"),"p-value" = c(format.pval(p_val_gas, digits = 3, eps = 0.001),
+    format.pval(p_val_diesel, digits = 3, eps = 0.001),
+    format.pval(p_val_propane, digits = 3, eps = 0.001)),check.names = FALSE)
+
+kable(ht_table, caption = "Paired T-Test Results: Regional Price Differences",align = c("l", "c", "c"))
+
+### Section 6: Bootstrapping
+
+set.seed(57)
+B = 1000
+
+get_boot_ci = function(df) {
+  boot_function = function() {
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    return(boot_mean[1,1])
+  }
+  boot_means = replicate(B, boot_function())
+  ci = quantile(boot_means, probs = c(0.025, 0.975))
+  return(c(lower = ci[1], upper = ci[2]))
+}
+boot_gas = get_boot_ci(regional_compare_gas)
+boot_diesel = get_boot_ci(regional_compare_diesel)
+boot_propane = get_boot_ci(regional_compare_propane)
+
+boot_table = data.frame(
+  "Fuel Type" = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"),
+  "Classical 95% CI (T-Test)" = c(
+    paste0("(", round(ci_lower_gas, 2), ", ", round(ci_upper_gas, 2), ")"),
+    paste0("(", round(ci_lower_diesel, 2), ", ",  round(ci_upper_diesel, 2), ")"),paste0("(", round(ci_lower_propane, 2), ", ", round(ci_upper_propane, 2), ")")),"Bootstrap 95% CI" = c(paste0("(", round(boot_gas["lower.2.5%"], 2), ", ",
+           round(boot_gas["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_diesel["lower.2.5%"], 2), ", ",
+           round(boot_diesel["upper.97.5%"], 2), ")"),
+    paste0("(", round(boot_propane["lower.2.5%"], 2), ", ",
+           round(boot_propane["upper.97.5%"], 2), ")")),check.names = FALSE)
+
+kable(boot_table, caption = 
+        "Comparison of Classical and Bootstrapped 95% Confidence Intervals",
+      align = c("l", "c", "c"))
+
+# extract the raw means
+get_boot_means = function(df) {
+  boot_func = function() {
+    boot_data = df %>% slice_sample(n = nrow(df), replace = TRUE)
+    boot_mean = boot_data %>% summarize(cal.s = mean(Reg_Diff, na.rm = TRUE))
+    return(boot_mean[1,1])
+  }
+  return(replicate(B, boot_func()))
+}
+
+# Generates the 1,000 means
+boot_means_gas = get_boot_means(regional_compare_gas)
+boot_means_diesel = get_boot_means(regional_compare_diesel)
+boot_means_propane = get_boot_means(regional_compare_propane)
+
+#Combines into one dataframe
+plot_data = data.frame( Fuel_Type = factor( rep(c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"), each = B),levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane") ),Means = c(boot_means_gas, boot_means_diesel, boot_means_propane))
+
+#Creates a dataframe for CI
+ci_data = data.frame(Fuel_Type = factor(c("Regular Unleaded Gasoline", "Diesel", "Auto Propane"), levels = c("Regular Unleaded Gasoline", "Diesel", "Auto Propane")),Lower = c(boot_gas[1], boot_diesel[1], boot_propane[1]),
+  Upper = c(boot_gas[2], boot_diesel[2], boot_propane[2]))
+
+#Plot
+ggplot(plot_data, aes(x = Means, fill = Fuel_Type)) +
+  geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.8,
+                 show.legend = FALSE) +
+  geom_vline(data = ci_data, aes(xintercept = Lower), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  geom_vline(data = ci_data, aes(xintercept = Upper), color = "red",
+             linetype = "dashed", linewidth = .4) +
+  scale_fill_manual(values = c(
+    "Regular Unleaded Gasoline" = "steelblue", 
+    "Diesel" = "darkorange", 
+    "Auto Propane" = "forestgreen"
+  )) +
+  facet_wrap(~ Fuel_Type, scales = "free_x", ncol = 3) + 
+  labs(title = "Bootstrap Distributions of Mean Regional Differences",
+    subtitle = "Northern Avg - Southern Avg (1,000 Resamples)",
+    x = "Mean Difference (cents/litre)", 
+    y = "Frequency") +theme_minimal(base_size = 14, base_family = "serif") +
+  theme(strip.text = element_text(face = "bold", size = 10))
+
+### Section 7: Regression Analysis
+# Visualization on polynomial fitting
+plot_data = regular_gas_data %>%
+  filter(Date >= as.Date("2021-01-01")) %>%
+  mutate(Time_Index = as.numeric(Date - min(Date))) %>%
+  drop_na(Ontario_Average)
+
+ggplot(plot_data, aes(x = Time_Index, y = Ontario_Average)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 1),
+              aes(color = "Deg 1"), se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2),
+              aes(color = "Deg 2"), se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3),
+              aes(color = "Deg 3"), se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 5),
+              aes(color = "Deg 5"), se = FALSE, linewidth = 1) +
+  labs(title = "Polynomial Fits",x = "Days since 2021", y = "Ontario Average Fuel Price (cents/litre)", color = "Model Fit") +  theme_minimal()
+
+# Data split
+regular = regular_gas_data_reg %>% mutate(group_ind = sample(c(1:5), size = nrow(regular_gas_data_reg), replace = TRUE))
+
+diesel = diesel_data_reg %>% mutate(group_ind = sample(c(1:5), size = nrow(diesel_data_reg), replace = TRUE))
+
+propane = auto_propane_data_reg %>% mutate(group_ind = sample(c(1:5), size = nrow(auto_propane_data_reg), replace = TRUE))
+
+regular_mse = vector()
+diesel_mse = vector()
+propane_mse = vector()
+
+# Cross Validation
+for(d in 1:5) {
+  mse_fold = vector()
+  for(i in 1:5) {
+    train_set = regular %>% filter(group_ind != i)
+    validation_set = regular %>% filter(group_ind == i)
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  regular_mse[d] = mean(mse_fold)
+}
+
+cv_result_regular = data.frame( "Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),"Cross-Validated MSE" = regular_mse,check.names = FALSE)
+
+for(d in 1:5) {
+  mse_fold = vector()
+  for(i in 1:5) {
+    train_set = diesel %>% filter(group_ind != i)
+    validation_set = diesel %>% filter(group_ind == i)
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  diesel_mse[d] = mean(mse_fold)
+}
+
+cv_result_diesel = data.frame("Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),"Cross-Validated MSE" = diesel_mse,
+  check.names = FALSE)
+
+for(d in 1:5) {
+  mse_fold = vector()
+  for(i in 1:5) {
+    train_set = propane %>% filter(group_ind != i)
+    validation_set = propane %>% filter(group_ind == i)
+    m_train = lm(Price ~ City + poly(Time_Index, d), data = train_set)
+    y_hat = predict(m_train, newdata = validation_set)
+    mse_fold[i] = mean((validation_set$Price - y_hat)^2, na.rm = TRUE)
+  }
+  propane_mse[d] = mean(mse_fold)
+}
+
+cv_result_propane = data.frame("Polynomial Degree" = c("Degree 1", "Degree 2", "Degree 3", "Degree 4", "Degree 5"),"Cross-Validated MSE" = propane_mse,
+  check.names = FALSE)
+
+# Summary plot
+plot_cv_data = data.frame(Degree = rep(1:5, 3),
+  MSE = c(regular_mse, diesel_mse, propane_mse),
+  Fuel_Type = rep(c("Regular Gas", "Diesel", "Auto Propane"), each = 5))
+
+ggplot(plot_cv_data, aes(x = Degree, y = MSE, color = Fuel_Type, group = Fuel_Type)) +geom_line() + geom_point() +scale_color_manual(values = c("Regular Gas" = "lightblue", "Diesel" = "orange", "Auto Propane" = "lightgreen")) + labs(title = "Cross-Validation Error",x = "Polynomial Degree",y = "MSE",color = "Fuel Type")
+
+# Final models
+regular_fit = lm(Price ~ City + poly(Time_Index, 3), data = regular_gas_data_reg)
+diesel_fit = lm(Price ~ City + poly(Time_Index, 3), data = diesel_data_reg)
+propane_fit = lm(Price ~ City + poly(Time_Index, 3), data = auto_propane_data_reg)
+
+summary(regular_fit)
+summary(diesel_fit)
+summary(propane_fit)
+
+# Plot the fitted model for 3 cities, regular gas
+plot_cities_1 = c("Kenora", "Toronto_East", "St_Catharines")
+plot_data_1 = regular_gas_data_reg %>% filter(City %in% plot_cities_1)
+
+ggplot(plot_data_1, aes(x = Time_Index, y = Price, color = City)) +
+  geom_point(color = "grey", alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE) +
+  facet_wrap(~ City) +scale_color_manual(values = c("Kenora" = "#4548B5", 
+    "Toronto_East" = "#7945B5", "St_Catharines" = "#4581B5")) +
+  labs(title = "Final Model Fit (Regular Gas)", x = "Days since 2021",y = "Price (cents/litre)") + theme_minimal() + theme(legend.position = "none")
+
+# Plot the fitted model for 3 cities, diesel
+plot_cities_1 = c("Kenora", "Toronto_East", "St_Catharines")
+plot_data_2 = diesel_data_reg %>% filter(City %in% plot_cities_1)
+
+ggplot(plot_data_2, aes(x = Time_Index, y = Price, color = City)) +
+  geom_point(color = "grey", alpha = 0.8) +  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE) + facet_wrap(~ City) +scale_color_manual(values = c("Kenora" = "#D3272C", "Toronto_East" = "#D32783", "St_Catharines" = "#D37727")) + labs(title = "Final Model Fit (Diesel)",  x = "Days since 2021",
+    y = "Price (cents/litre)") +theme_minimal() + theme(legend.position = "none")
+
+# Plot the fitted model for 2 cities, auto propane
+plot_cities_2 = c("Kenora", "Toronto_East")
+plot_data_3 = auto_propane_data_reg %>% filter(City %in% plot_cities_2)
+
+ggplot(plot_data_3, aes(x = Time_Index, y = Price, color = City)) +
+  geom_point(color = "grey", alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE) +
+  facet_wrap(~ City) +scale_color_manual(values = c("Kenora" = "#52A766",     "Toronto_East" = "#93A752")) +nlabs(title = "Final Model Fit (Auto Propane)",
+    x = "Days since 2021",y = "Price (cents/litre)") +theme_minimal() + theme(legend.position = "none")
+
+r_coefs = as.data.frame(summary(regular_fit)$coefficients)
+r_coefs$Term = rownames(r_coefs)
+
+# Create a new column for cities in North and South
+r_plot = r_coefs %>%filter(grepl("City", Term)) %>% mutate(City = gsub("City", "", Term)) %>% mutate(Region = ifelse(City %in% c("Thunder_Bay", "Timmins", "Sudbury", "North_Bay", "Sault_Saint_Marie","Parry_Sound"), "Northern", "Southern"))
+
+ggplot(r_plot, aes(x = reorder(City, Estimate), y = Estimate, fill = Region)) + geom_col() + coord_flip() + scale_fill_manual(values = c("Northern" = "#5B789F", "Southern" = "#5B9A9F")) + labs(title = "Price Differences (Regular Gas)", subtitle = "Baseline: Kenora (Northern)", x = "City", y = "Average Price Difference (cents/litre)") +
+  theme_minimal() + theme(legend.position = "bottom")
+
+d_coefs = as.data.frame(summary(diesel_fit)$coefficients)
+d_coefs$Term = rownames(d_coefs)
+
+d_plot = d_coefs %>%filter(grepl("City", Term)) %>% mutate(City = gsub("City", "", Term)) %>% mutate(Region = ifelse(City %in% c("Thunder_Bay", "Timmins", "Sudbury", "North_Bay", "Sault_Saint_Marie","Parry_Sound"), "Northern", "Southern"))
+
+ggplot(d_plot, aes(x = reorder(City, Estimate), y = Estimate, fill = Region)) + geom_col() + coord_flip() + scale_fill_manual(values = c("Northern" = "#D44225", "Southern" = "#D49A25")) + labs(title = "Price Differences (Diesel)", subtitle = "Baseline: Kenora (Northern)", x = "City", y = "Average Price Difference (cents/litre)") + theme_minimal() + theme(legend.position = "bottom")
+
+p_coefs = as.data.frame(summary(propane_fit)$coefficients)
+p_coefs$Term = rownames(p_coefs)
+
+p_plot = p_coefs %>%filter(grepl("City", Term)) %>% mutate(City = gsub("City", "", Term)) %>% mutate(Region = ifelse(City %in% c("Thunder_Bay", "Timmins", "Sudbury", "North_Bay", "Sault_Saint_Marie","Parry_Sound"), "Northern", "Southern"))
+
+ggplot(p_plot, aes(x = reorder(City, Estimate), y = Estimate, fill = Region)) + geom_col() + coord_flip() + scale_fill_manual(values = c("Northern" = "#54A66F", "Southern" = "#8BA654")) + labs(title = "Price Differences (Auto Propane)", subtitle = "Baseline: Kenora (Northern)", x = "City", y = "Average Price Difference (cents/litre)") + theme_minimal() + theme(legend.position = "bottom")
+```
+
+
